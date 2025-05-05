@@ -1,0 +1,410 @@
+---
+title: "R_Mult"
+output: html_document
+date: "2024-08-28"
+---
+
+```{r}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+rm(list = ls())
+```
+
+```{r}
+M=read.csv("dfNum.csv")
+```
+
+```{r}
+head(M)
+```
+
+##Randomize y subset
+
+```{r}
+var(M)
+```
+
+```{r}
+cor(M)
+```
+
+
+```{r}
+set.seed(123)
+sampled_data <- M[sample(nrow(M), 10000), ]
+sampled_data
+```
+
+##Valides de supuestos
+
+```{r}
+library(MVN)
+mvn(sampled_data,subset = NULL,mvn = "mardia", covariance = FALSE,showOutliers = FALSE)
+```
+
+
+##Primer modelo de regresión múltiple
+
+```{r}
+model <- lm(SR + TOUT + WSR + RH + WDR ~ O3 + CO + NO+ NO2+ NOX +SO2 ,data=sampled_data)
+```
+
+##Ver que variables si aportan al modelo
+
+```{r}
+step(model,direction="both", trace=1)
+```
+
+##Generar un nuevo modelo mejor
+
+```{r}
+```
+
+##Evaluar modelo
+
+Colinealidad
+```{r}
+library(car)
+vif_values <- vif(model)
+print(vif_values)
+```
+
+Variabilidad
+```{r}
+summary(model)
+```
+
+```{r}
+# Modelo para O3
+modelo_O3 <- lm(O3 ~ SR + TOUT + WSR + RH + WDR, data = sampled_data)
+summary(modelo_O3)
+
+# Modelo para CO
+modelo_CO <- lm(CO ~ SR + TOUT + WSR + RH + WDR, data = sampled_data)
+summary(modelo_CO)
+
+# Modelo para NO
+modelo_NO <- lm(NO ~ SR + TOUT + WSR + RH + WDR, data = sampled_data)
+summary(modelo_NO)
+
+# Modelo para NO2
+modelo_NO2 <- lm(NO2 ~ SR + TOUT + WSR + RH + WDR, data = sampled_data)
+summary(modelo_NO2)
+
+# Modelo para NOX
+modelo_NOX <- lm(NOX ~ SR + TOUT + WSR + RH + WDR, data = sampled_data)
+summary(modelo_NOX)
+
+# Modelo para SO2
+modelo_SO2 <- lm(SO2 ~ SR + TOUT + WSR + RH + WDR, data = sampled_data)
+summary(modelo_SO2)
+```
+
+
+
+## Buscar valores atípicos 
+
+```{r}
+rstandard=rstandard(model)
+atipicos <- which(abs(rstandard) > 2)
+print(atipicos)
+```
+
+```{r}
+rstudent=rstudent(model)
+atipicos_student <- which(abs(rstudent) > 2)
+print(atipicos_student)
+```
+
+## Analisis factorial
+
+```{r}
+library(psych)
+contaminantes <- sampled_data[, c("O3", "CO", "NO", "NO2", "NOX", "SO2")]
+#Normalizar los datos?
+contaminantes_normalizado <- scale(contaminantes)
+factores <- factanal(contaminantes_normalizado, factors = 3, rotation = "varimax",scores="regression")
+print(factores)
+```
+```{r}
+# Extraer las puntuaciones de los factores
+factor_scores <- as.data.frame(factores$scores)
+
+# Renombrar las columnas de los factores si es necesario
+colnames(factor_scores) <- c("Factor1", "Factor2", "Factor3")
+
+# Agregar las puntuaciones de los factores al dataframe original
+sampled_data <- cbind(sampled_data, factor_scores)
+
+# Ver las primeras filas del dataframe actualizado
+head(sampled_data)
+```
+
+
+```{r}
+library(corrplot)
+# Calcula la matriz de correlación del dataframe
+cor_matrix <- cor(sampled_data, use = "complete.obs")
+
+# Genera el heatmap de correlación
+corrplot(cor_matrix, method = "color", type = "upper", tl.cex = 0.8, col = colorRampPalette(c("red", "white", "blue"))(200))
+```
+#Agregar ICA PM2.5 y PM10
+
+```{r}
+# Definir una función para calcular el ICA con manejo de NA
+calcular_ICA <- function(concentration, contaminant = "PM2.5") {
+  # Si la concentración es NA, retornar NA
+  if (is.na(concentration)) {
+    return(NA)
+  }
+  
+  # Definir los límites para PM2.5
+  if (contaminant == "PM2.5") {
+    limites <- data.frame(
+      Conc_lo = c(0, 12.1, 35.5, 55.5, 150.5, 250.5),
+      Conc_hi = c(12.0, 35.4, 55.4, 150.4, 250.4, 500),
+      ICA_lo = c(0, 51, 101, 151, 201, 301),
+      ICA_hi = c(50, 100, 150, 200, 300, 500)
+    )
+  }
+  
+  # Definir los límites para PM10
+  else if (contaminant == "PM10") {
+    limites <- data.frame(
+      Conc_lo = c(0, 55, 155, 255, 355, 425),
+      Conc_hi = c(54, 154, 254, 354, 424, 604),
+      ICA_lo = c(0, 51, 101, 151, 201, 301),
+      ICA_hi = c(50, 100, 150, 200, 300, 500)
+    )
+  }
+  
+  # Encontrar el rango correcto para la concentración
+  rango <- limites[which(limites$Conc_lo <= concentration & concentration <= limites$Conc_hi), ]
+  
+  # Si no se encuentra un rango, devolver NA
+  if (nrow(rango) == 0) {
+    return(NA)
+  }
+  
+  # Calcular el ICA usando la fórmula
+  ICA <- ((rango$ICA_hi - rango$ICA_lo) / (rango$Conc_hi - rango$Conc_lo)) * (concentration - rango$Conc_lo) + rango$ICA_lo
+  
+  return(ICA)
+}
+```
+
+```{r}
+# Aplicar la función para PM2.5
+sampled_data$ICA_PM2.5 <- sapply(sampled_data$PM2.5, calcular_ICA, contaminant = "PM2.5")
+
+# Aplicar la función para PM10
+sampled_data$ICA_PM10 <- sapply(sampled_data$PM10, calcular_ICA, contaminant = "PM10")
+
+# Verifica las primeras filas del dataframe actualizado
+head(sampled_data)
+```
+
+##Clasificacion de pm2.5 y pm10
+
+```{r}
+# Función para clasificar la calidad del aire en base al ICA
+clasificar_ICA <- function(ICA) {
+  if (is.na(ICA)) {
+    return(NA)
+  } else if (ICA <= 50) {
+    return("Bueno")
+  } else if (ICA <= 100) {
+    return("Moderado")
+  } else if (ICA <= 150) {
+    return("No saludable para grupos sensibles")
+  } else if (ICA <= 200) {
+    return("No saludable")
+  } else if (ICA <= 300) {
+    return("Muy no saludable")
+  } else if (ICA <= 500) {
+    return("Peligroso")
+  } else {
+    return(NA)
+  }
+}
+```
+
+
+```{r}
+# Crear una columna categórica para PM2.5
+sampled_data$Calidad_PM2.5 <- sapply(sampled_data$ICA_PM2.5, clasificar_ICA)
+
+# Crear una columna categórica para PM10
+sampled_data$Calidad_PM10 <- sapply(sampled_data$ICA_PM10, clasificar_ICA)
+
+# Verifica las primeras filas del dataframe actualizado
+head(sampled_data)
+```
+
+##Regresión de lda a partir de mis factores
+
+```{r}
+# Asegurarse de que el conjunto de datos tiene el mismo número de filas
+# Filtrar los datos originales para coincidir con las filas usadas en el modelo
+sampled_data_filtered <- sampled_data[complete.cases(sampled_data), ]  # Si eliminaste NA antes de LDA
+```
+
+
+```{r}
+library(MASS)
+modelo_lda <- lda(Calidad_PM2.5 ~ Factor1+Factor2+Factor3, data = sampled_data_filtered)
+modelo_lda
+```
+
+```{r}
+lda_values <- predict(modelo_lda)$x
+```
+
+```{r}
+# Determinar cuántas mediciones (filas) tiene lda_values
+nrow(lda_values)
+```
+
+
+```{r}
+df_lda <- data.frame(lda_values, Category = sampled_data_filtered$Calidad_PM2.5)
+df_lda
+library(ggplot2)
+ggplot(df_lda, aes(x = LD1, fill = Category)) +
+  geom_histogram(alpha = 0.5, position = "identity", bins = 30) +
+  labs(title = "Histograma de Valores Discriminantes (LD1) por Grupo",
+       x = "Valor Discriminante (LD1)",
+       y = "Frecuencia") +
+  theme_minimal()
+ggplot(df_lda, aes(x = LD2, fill = Category)) +
+  geom_histogram(alpha = 0.5, position = "identity", bins = 30) +
+  labs(title = "Histograma de Valores Discriminantes (LD2) por Grupo",
+       x = "Valor Discriminante (LD2)",
+       y = "Frecuencia") +
+  theme_minimal()
+```
+
+```{r}
+lda_pred <- predict(modelo_lda)
+df_lda <- data.frame(LD1 = lda_pred$x[,1], LD2 = lda_pred$x[,2], 
+                     Predicted = lda_pred$class, 
+                     Actual = sampled_data_filtered$Calidad_PM2.5)
+df_lda
+ggplot(df_lda, aes(x = LD1, y = LD2, color = Predicted, shape = Actual)) +
+  geom_point(size = 3, alpha = 0.8) +
+  labs(title = "Segmentación de Datos usando LDA",
+       x = "Discriminante Lineal 1 (LD1)",
+       y = "Discriminante Lineal 2 (LD2)",
+       color = "Clase Predicha",
+       shape = "Clase Real") +
+  theme_minimal()
+```
+
+```{r}
+matriz_confusion <- table(lda_pred$class, sampled_data_filtered$Calidad_PM2.5)
+print(matriz_confusion)
+precision <- sum(diag(matriz_confusion)) / sum(matriz_confusion)
+print(paste("Precisión del modelo:", round(precision, 4)))
+```
+##Analisis de PM10
+
+```{r}
+library(MASS)
+modelo_lda <- lda(Calidad_PM10 ~ Factor1+Factor2+Factor3, data = sampled_data_filtered)
+modelo_lda
+```
+
+
+```{r}
+lda_values <- predict(modelo_lda)$x
+df_lda <- data.frame(lda_values, Category = sampled_data_filtered$Calidad_PM10)
+df_lda
+library(ggplot2)
+ggplot(df_lda, aes(x = LD1, fill = Category)) +
+  geom_histogram(alpha = 0.5, position = "identity", bins = 30) +
+  labs(title = "Histograma de Valores Discriminantes (LD1) por Grupo",
+       x = "Valor Discriminante (LD1)",
+       y = "Frecuencia") +
+  theme_minimal()
+ggplot(df_lda, aes(x = LD2, fill = Category)) +
+  geom_histogram(alpha = 0.5, position = "identity", bins = 30) +
+  labs(title = "Histograma de Valores Discriminantes (LD2) por Grupo",
+       x = "Valor Discriminante (LD2)",
+       y = "Frecuencia") +
+  theme_minimal()
+```
+
+
+```{r}
+lda_pred <- predict(modelo_lda)
+df_lda <- data.frame(LD1 = lda_pred$x[,1], LD2 = lda_pred$x[,2], 
+                     Predicted = lda_pred$class, 
+                     Actual = sampled_data_filtered$Calidad_PM10)
+df_lda
+ggplot(df_lda, aes(x = LD1, y = LD2, color = Predicted, shape = Actual)) +
+  geom_point(size = 3, alpha = 0.8) +
+  labs(title = "Segmentación de Datos usando LDA",
+       x = "Discriminante Lineal 1 (LD1)",
+       y = "Discriminante Lineal 2 (LD2)",
+       color = "Clase Predicha",
+       shape = "Clase Real") +
+  theme_minimal()
+```
+
+
+```{r}
+matriz_confusion <- table(lda_pred$class, sampled_data_filtered$Calidad_PM10)
+print(matriz_confusion)
+precision <- sum(diag(matriz_confusion)) / sum(matriz_confusion)
+print(paste("Precisión del modelo:", round(precision, 4)))
+```
+
+##Regresión a partir de mis factores
+
+```{r}
+#+ SR + TOUT + WSR + RH + WDR
+factor_scores <- as.data.frame(factores$scores)
+data_with_factors <- cbind(sampled_data, factor_scores)
+regression_model <- lm( PM10 ~Factor1 + Factor2 + Factor3, data = data_with_factors)
+summary(regression_model)
+```
+
+
+
+
+##ANALISIS DIA Y NOCHE
+
+
+```{r}
+MDIA=read.csv("NdfDIA.csv")
+MNOCHE=read.csv("NdfNOCHE.csv")
+```
+
+```{r}
+set.seed(123)
+sampled_dataDIA <- MDIA[sample(nrow(MDIA), 30000), ]
+sampled_dataDIA
+```
+
+```{r}
+set.seed(123)
+sampled_dataNOCHE <- MNOCHE[sample(nrow(MNOCHE), 30000), ]
+sampled_dataNOCHE
+```
+
+```{r}
+contaminantesDIA <- sampled_dataDIA[, c("O3", "CO", "NO", "NO2", "NOX", "SO2")]
+contaminantes_normalizadoDIA <- scale(contaminantesDIA)
+factoresDIA <- factanal(contaminantes_normalizadoDIA, factors = 3, rotation = "varimax")
+print(factoresDIA)
+```
+
+```{r}
+contaminantesNOCHE <- sampled_dataNOCHE[, c("O3", "CO", "NO", "NO2", "NOX", "SO2")]
+contaminantes_normalizadoNOCHE <- scale(contaminantesNOCHE)
+factoresNOCHE <- factanal(contaminantes_normalizadoNOCHE, factors = 3, rotation = "varimax")
+print(factoresNOCHE)
+```
