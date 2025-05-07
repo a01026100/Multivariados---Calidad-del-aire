@@ -2,7 +2,7 @@
 
 ## 📄 Descripción
 
-En este proyecto aplico un **modelo multiplicativo de descomposición**  para analizar y pronosticar una serie temporal (por ejemplo, ventas mensuales o precios históricos). El objetivo es descomponer la serie en tendencia, estacionalidad y ruido, ajustar el modelo y evaluar su capacidad predictiva.
+En este proyecto aplico un **modelo multiplicativo de descomposición**  para analizar y pronosticar una serie temporal sobre la calidad del aire. El objetivo es descomponer la serie en tendencia, estacionalidad y ruido, ajustar el modelo y evaluar su capacidad predictiva.
 
 ## 📁 Estructura del repositorio
 
