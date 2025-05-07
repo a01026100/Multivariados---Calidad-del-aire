@@ -36,7 +36,7 @@ En este proyecto aplico un **modelo multiplicativo de descomposición**  para an
 3. **Validación**: test de Ljung–Box y gráficos de residuos (ACF, QQ-plot).
 4. **Pronóstico**: genera predicciones para los próximos 12 períodos y compara con datos reales.
 
-## 📸 Capturas de pantalla
+## 📸 Código 
 
 Descomposición
 
@@ -58,7 +58,7 @@ autoplot(fc) +
   ggtitle("Pronóstico vs Observado")
   
 
-📈 Resultados clave
+## 📈 Resultados clave
 
 El modelo de descomposición multiplicativa capturó la tendencia creciente de la serie, con un incremento anual promedio del 10 % y un patrón estacional claro que muestra picos en diciembre y valles en febrero.
 
